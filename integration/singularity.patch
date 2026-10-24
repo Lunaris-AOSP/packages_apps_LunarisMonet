@@ -1,0 +1,1205 @@
+diff --git a/res/xml/lunaris_settings_themes.xml b/res/xml/lunaris_settings_themes.xml
+--- a/res/xml/lunaris_settings_themes.xml
++++ b/res/xml/lunaris_settings_themes.xml
+@@ -1,4 +1,5 @@
+ <?xml version="1.0" encoding="utf-8"?>
++<!-- Copyright (C) 2024-2026 Lunaris AOSP -->
+ 
+ <PreferenceScreen
+     xmlns:android="http://schemas.android.com/apk/res/android"
+@@ -39,7 +40,12 @@
+             android:key="monet_settings"
+             android:title="@string/monet_settings_title"
+             android:summary="@string/monet_settings_summary"
+-            android:fragment="org.lunaris.settings.fragments.themes.ColorsSettingsFragment" />
++            >
++            <intent
++                android:action="android.intent.action.MAIN"
++                android:targetPackage="org.lunaris.monet"
++                android:targetClass="org.lunaris.monet.MainActivity" />
++        </Preference>
+ 
+         <!-- Gradient Customization -->
+         <Preference
+diff --git a/src/org/lunaris/settings/fragments/themes/ColorsSettingsFragment.kt b/src/org/lunaris/settings/fragments/themes/ColorsSettingsFragment.kt
+deleted file mode 100644
+--- a/src/org/lunaris/settings/fragments/themes/ColorsSettingsFragment.kt
++++ /dev/null
+@@ -1,471 +0,0 @@
+-/*
+- * Copyright (C) 2024-2025 Lunaris AOSP
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.lunaris.settings.fragments.themes
+-
+-import android.graphics.Color
+-import android.os.Bundle
+-import android.provider.Settings
+-import androidx.compose.ui.graphics.Color as ComposeColor
+-import androidx.preference.ListPreference
+-import androidx.preference.Preference
+-import androidx.preference.SwitchPreferenceCompat
+-import com.android.settings.R
+-import com.android.settings.SettingsPreferenceFragment
+-import com.android.internal.logging.nano.MetricsProto.MetricsEvent
+-import org.json.JSONObject
+-import org.lunaris.settings.preferences.CustomSeekBarPreference
+-import org.lunaris.settings.utils.toArgb
+-
+-class ColorsSettingsFragment : SettingsPreferenceFragment(), 
+-    Preference.OnPreferenceChangeListener {
+-
+-    companion object {
+-        private const val KEY_USE_WALLPAPER = "use_wallpaper_colors"
+-        private const val KEY_SEED_COLOR = "custom_seed_color"
+-        private const val KEY_WALLPAPER_SEED_COLOR = "wallpaper_seed_color"
+-        private const val KEY_THEME_STYLE = "theme_style"
+-        private const val KEY_CHROMA_ACCENT1 = "chroma_boost_accent1"
+-        private const val KEY_CHROMA_ACCENT2 = "chroma_boost_accent2"
+-        private const val KEY_CHROMA_ACCENT3 = "chroma_boost_accent3"
+-        private const val KEY_CHROMA_NEUTRAL1 = "chroma_boost_neutral1"
+-        private const val KEY_CHROMA_NEUTRAL2 = "chroma_boost_neutral2"
+-        private const val KEY_HUE_SHIFT = "hue_shift"
+-        private const val KEY_TONE_SHIFT_LIGHT = "tone_shift_light"
+-        private const val KEY_TONE_SHIFT_DARK = "tone_shift_dark"
+-        private const val KEY_USE_SECONDARY_SEED = "use_secondary_seed"
+-        private const val KEY_SECONDARY_SEED_COLOR = "secondary_seed_color"
+-        private const val KEY_FIDELITY = "fidelity_enabled"
+-        private const val KEY_CONTRAST = "contrast_level"
+-        private const val KEY_CHROMA = "chroma_boost"
+-    }
+-
+-    private lateinit var useWallpaperColors: SwitchPreferenceCompat
+-    private lateinit var seedColorPref: Preference
+-    private lateinit var wallpaperSeedColorPref: Preference
+-    private lateinit var themeStyle: ListPreference
+-    private lateinit var fidelity: SwitchPreferenceCompat
+-    private var contrast: CustomSeekBarPreference? = null
+-    private var chroma: CustomSeekBarPreference? = null
+-    private var chromaAccent1: CustomSeekBarPreference? = null
+-    private var chromaAccent2: CustomSeekBarPreference? = null
+-    private var chromaAccent3: CustomSeekBarPreference? = null
+-    private var chromaNeutral1: CustomSeekBarPreference? = null
+-    private var chromaNeutral2: CustomSeekBarPreference? = null
+-    private var hueShift: CustomSeekBarPreference? = null
+-    private var toneShiftLight: CustomSeekBarPreference? = null
+-    private var toneShiftDark: CustomSeekBarPreference? = null
+-    private lateinit var useSecondarySeed: SwitchPreferenceCompat
+-    private lateinit var secondarySeedColorPref: Preference
+-
+-    override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+-        addPreferencesFromResource(R.xml.monet_settings)
+-
+-        useWallpaperColors = findPreference(KEY_USE_WALLPAPER)!!
+-        seedColorPref = findPreference(KEY_SEED_COLOR)!!
+-        wallpaperSeedColorPref = findPreference(KEY_WALLPAPER_SEED_COLOR)!!
+-        themeStyle = findPreference(KEY_THEME_STYLE)!!
+-        fidelity = findPreference(KEY_FIDELITY)!!
+-        contrast = findPreference(KEY_CONTRAST)
+-        chroma = findPreference(KEY_CHROMA)
+-        chromaAccent1 = findPreference(KEY_CHROMA_ACCENT1)
+-        chromaAccent2 = findPreference(KEY_CHROMA_ACCENT2)
+-        chromaAccent3 = findPreference(KEY_CHROMA_ACCENT3)
+-        chromaNeutral1 = findPreference(KEY_CHROMA_NEUTRAL1)
+-        chromaNeutral2 = findPreference(KEY_CHROMA_NEUTRAL2)
+-        hueShift = findPreference(KEY_HUE_SHIFT)
+-        toneShiftLight = findPreference(KEY_TONE_SHIFT_LIGHT)
+-        toneShiftDark = findPreference(KEY_TONE_SHIFT_DARK)
+-        useSecondarySeed = findPreference(KEY_USE_SECONDARY_SEED)!!
+-        secondarySeedColorPref = findPreference(KEY_SECONDARY_SEED_COLOR)!!
+-
+-        useWallpaperColors.onPreferenceChangeListener = this
+-
+-        secondarySeedColorPref.setOnPreferenceClickListener {
+-            showSecondarySeedColorPickerDialog()
+-            true
+-        }
+-        useSecondarySeed.onPreferenceChangeListener = this
+-
+-        chromaAccent1?.onPreferenceChangeListener = this
+-        chromaAccent2?.onPreferenceChangeListener = this
+-        chromaAccent3?.onPreferenceChangeListener = this
+-        chromaNeutral1?.onPreferenceChangeListener = this
+-        chromaNeutral2?.onPreferenceChangeListener = this
+-        hueShift?.onPreferenceChangeListener = this
+-        toneShiftLight?.onPreferenceChangeListener = this
+-        toneShiftDark?.onPreferenceChangeListener = this
+-        
+-        seedColorPref.setOnPreferenceClickListener {
+-            showColorPickerDialog()
+-            true
+-        }
+-        
+-        wallpaperSeedColorPref.setOnPreferenceClickListener {
+-            showWallpaperColorPickerDialog()
+-            true
+-        }
+-        
+-        themeStyle.onPreferenceChangeListener = this
+-        fidelity.onPreferenceChangeListener = this
+-        contrast?.onPreferenceChangeListener = this
+-        chroma?.onPreferenceChangeListener = this
+-
+-        loadCurrentSettings()
+-        updateSeedColorSummary()
+-        updateSeedColorDependency(useWallpaperColors.isChecked)
+-        updateSecondarySeedColorSummary()
+-        updateSecondarySeedDependency(useSecondarySeed.isChecked)
+-    }
+-
+-    private fun loadCurrentSettings() {
+-        try {
+-            val json = getCurrentSettings()
+-
+-            val colorSource = json.optString("android.theme.customization.color_source", "home")
+-            val useWallpaper = colorSource == "home" || colorSource == "lock"
+-            useWallpaperColors.isChecked = useWallpaper
+-
+-            val style = json.optString("android.theme.customization.theme_style", "TONAL_SPOT")
+-            themeStyle.value = style
+-
+-            val fidelityValue = json.optBoolean("_fidelity_enabled", false)
+-            fidelity.isChecked = fidelityValue
+-
+-            contrast?.let {
+-                val contrastValue = (json.optDouble("_contrast_level", 0.0) * 100).toInt()
+-                it.value = contrastValue
+-            }
+-
+-            chroma?.let {
+-                val chromaValue = json.optDouble("_chroma_boost", 0.0).toInt()
+-                it.value = chromaValue
+-            }
+-            chromaAccent1?.value = json.optDouble("_chroma_accent1", 0.0).toInt()
+-            chromaAccent2?.value = json.optDouble("_chroma_accent2", 0.0).toInt()
+-            chromaAccent3?.value = json.optDouble("_chroma_accent3", 0.0).toInt()
+-            chromaNeutral1?.value = json.optDouble("_chroma_neutral1", 0.0).toInt()
+-            chromaNeutral2?.value = json.optDouble("_chroma_neutral2", 0.0).toInt()
+-
+-            hueShift?.value = json.optDouble("_hue_shift", 0.0).toInt()
+-
+-            toneShiftLight?.value = json.optDouble("_tone_shift_light", 0.0).toInt()
+-            toneShiftDark?.value  = json.optDouble("_tone_shift_dark",  0.0).toInt()
+-
+-            val hasSecondarySeed = json.has("_secondary_seed_color")
+-                    && json.optString("_secondary_seed_color", "").isNotEmpty()
+-            useSecondarySeed.isChecked = hasSecondarySeed
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    override fun onPreferenceChange(preference: Preference, newValue: Any): Boolean {
+-        when (preference.key) {
+-            KEY_USE_WALLPAPER -> {
+-                val useWallpaper = newValue as Boolean
+-                applyWallpaperColorsSetting(useWallpaper)
+-                updateSeedColorDependency(useWallpaper)
+-                return true
+-            }
+-            KEY_USE_SECONDARY_SEED -> {
+-                val enabled = newValue as Boolean
+-                if (!enabled) {
+-                    // Clear secondary seed from JSON when the switch is turned off.
+-                    applySecondarySeedEnabled(false)
+-                }
+-                updateSecondarySeedDependency(enabled)
+-                return true
+-            }
+-            KEY_WALLPAPER_SEED_COLOR -> {
+-                val useWallpaper = newValue as Boolean
+-                applyWallpaperColorsSetting(useWallpaper)
+-                updateSeedColorDependency(useWallpaper)
+-                return true
+-            }
+-            KEY_THEME_STYLE -> {
+-                applyThemeStyle(newValue as String)
+-                return true
+-            }
+-            KEY_FIDELITY -> {
+-                applyFidelitySetting(newValue as Boolean)
+-                return true
+-            }
+-            KEY_CONTRAST -> {
+-                applyContrastLevel(newValue as Int)
+-                return true
+-            }
+-            KEY_CHROMA -> {
+-                applyChromaBoost(newValue as Int)
+-                return true
+-            }
+-            KEY_CHROMA_ACCENT1 -> {
+-                applyDoubleKey("_chroma_accent1", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_CHROMA_ACCENT2 -> {
+-                applyDoubleKey("_chroma_accent2", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_CHROMA_ACCENT3 -> {
+-                applyDoubleKey("_chroma_accent3", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_CHROMA_NEUTRAL1 -> {
+-                applyDoubleKey("_chroma_neutral1", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_CHROMA_NEUTRAL2 -> {
+-                applyDoubleKey("_chroma_neutral2", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_HUE_SHIFT -> {
+-                applyDoubleKey("_hue_shift", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_TONE_SHIFT_LIGHT -> {
+-                applyDoubleKey("_tone_shift_light", (newValue as Int).toDouble())
+-                return true
+-            }
+-            KEY_TONE_SHIFT_DARK -> {
+-                applyDoubleKey("_tone_shift_dark", (newValue as Int).toDouble())
+-                return true
+-            }
+-        }
+-        return false
+-    }
+-
+-    private fun showColorPickerDialog() {
+-        try {
+-            val json = getCurrentSettings()
+-            val seedColorHex = json.optString("_base_seed_color", "6750A4")
+-
+-            val dialog = ColorPickerDialogFragment.newInstance(seedColorHex)
+-            dialog.setOnColorSelectedListener { color ->
+-                applySeedColor(color)
+-                updateSeedColorSummary()
+-            }
+-            dialog.show(parentFragmentManager, ColorPickerDialogFragment.TAG)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun showWallpaperColorPickerDialog() {
+-        try {
+-            val dialog = WallpaperColorPickerDialogFragment.newInstance()
+-            dialog.setOnColorSelectedListener { color ->
+-                applySeedColor(color)
+-                updateSeedColorSummary()
+-            }
+-            dialog.show(parentFragmentManager, WallpaperColorPickerDialogFragment.TAG)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun showSecondarySeedColorPickerDialog() {
+-        try {
+-            val json = getCurrentSettings()
+-            val secondarySeedHex = json.optString("_secondary_seed_color", "FF5500")
+-
+-            val dialog = ColorPickerDialogFragment.newInstance(secondarySeedHex)
+-            dialog.setOnColorSelectedListener { color ->
+-                applySecondarySeedColor(color)
+-                updateSecondarySeedColorSummary()
+-            }
+-            dialog.show(parentFragmentManager, ColorPickerDialogFragment.TAG)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun updateSecondarySeedColorSummary() {
+-        try {
+-            val json = getCurrentSettings()
+-            val seedColor = json.optString("_secondary_seed_color", "FF5500")
+-            secondarySeedColorPref.summary = "#${seedColor.uppercase().replace("#", "")}"
+-        } catch (e: Exception) {
+-            secondarySeedColorPref.summary = "#FF5500"
+-        }
+-    }
+-
+-    private fun updateSecondarySeedDependency(enabled: Boolean) {
+-        secondarySeedColorPref.isEnabled = enabled
+-    }
+-
+-    private fun updateSeedColorSummary() {
+-        try {
+-            val json = getCurrentSettings()
+-            val seedColor = json.optString("_base_seed_color", "6750A4")
+-            seedColorPref.summary = "#${seedColor.uppercase().replace("#", "")}"
+-        } catch (e: Exception) {
+-            seedColorPref.summary = "#6750A4"
+-        }
+-    }
+-
+-    private fun updateSeedColorDependency(useWallpaper: Boolean) {
+-        seedColorPref.isEnabled = !useWallpaper
+-        wallpaperSeedColorPref.isEnabled = !useWallpaper
+-    }
+-
+-    private fun getCurrentSettings(): JSONObject {
+-        return try {
+-            val currentJson = Settings.Secure.getString(
+-                activity?.contentResolver,
+-                Settings.Secure.THEME_CUSTOMIZATION_OVERLAY_PACKAGES
+-            )
+-            JSONObject(currentJson ?: "{}")
+-        } catch (e: Exception) {
+-            JSONObject("{}")
+-        }
+-    }
+-
+-    private fun applySettings(json: JSONObject) {
+-        try {
+-            json.put("_applied_timestamp", System.currentTimeMillis())
+-            Settings.Secure.putString(
+-                activity?.contentResolver,
+-                Settings.Secure.THEME_CUSTOMIZATION_OVERLAY_PACKAGES,
+-                json.toString()
+-            )
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyWallpaperColorsSetting(useWallpaper: Boolean) {
+-        try {
+-            val json = getCurrentSettings()
+-            if (useWallpaper) {
+-                json.remove("android.theme.customization.system_palette")
+-                json.remove("android.theme.customization.accent_color")
+-                json.remove("_base_seed_color")
+-                json.put("android.theme.customization.color_source", "home")
+-            } else {
+-                json.put("android.theme.customization.color_source", "preset")
+-                if (!json.has("_base_seed_color")) {
+-                    json.put("_base_seed_color", "6750A4")
+-                    json.put("android.theme.customization.system_palette", "6750A4")
+-                    json.put("android.theme.customization.accent_color", "6750A4")
+-                }
+-            }
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applySeedColor(color: ComposeColor) {
+-        try {
+-            val json = getCurrentSettings()
+-
+-            val argb = color.toArgb()
+-            val hexColor = String.format("%06X", 0xFFFFFF and argb)
+-
+-            json.put("_base_seed_color", hexColor)
+-            json.put("android.theme.customization.system_palette", hexColor)
+-            json.put("android.theme.customization.accent_color", hexColor)
+-            json.put("android.theme.customization.color_source", "preset")
+-
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyThemeStyle(style: String) {
+-        try {
+-            val json = getCurrentSettings()
+-            json.put("android.theme.customization.theme_style", style)
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyFidelitySetting(enabled: Boolean) {
+-        try {
+-            val json = getCurrentSettings()
+-            json.put("_fidelity_enabled", enabled)
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyContrastLevel(value: Int) {
+-        try {
+-            val json = getCurrentSettings()
+-            json.put("_contrast_level", value / 100.0)
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyDoubleKey(jsonKey: String, value: Double) {
+-        try {
+-            val json = getCurrentSettings()
+-            json.put(jsonKey, value)
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applySecondarySeedColor(color: ComposeColor) {
+-        try {
+-            val json = getCurrentSettings()
+-            val argb = color.toArgb()
+-            val hexColor = String.format("%06X", 0xFFFFFF and argb)
+-            json.put("_secondary_seed_color", hexColor)
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applySecondarySeedEnabled(enabled: Boolean) {
+-        try {
+-            val json = getCurrentSettings()
+-            if (enabled) {
+-                if (!json.has("_secondary_seed_color")) {
+-                    json.put("_secondary_seed_color", "FF5500")
+-                }
+-            } else {
+-                json.remove("_secondary_seed_color")
+-            }
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    private fun applyChromaBoost(value: Int) {
+-        try {
+-            val json = getCurrentSettings()
+-            json.put("_chroma_boost", value.toDouble())
+-            applySettings(json)
+-        } catch (e: Exception) {
+-            e.printStackTrace()
+-        }
+-    }
+-
+-    override fun getMetricsCategory(): Int {
+-        return MetricsEvent.LUNARIS
+-    }
+-}
+diff --git a/src/org/lunaris/settings/fragments/themes/ColorPickerDialogFragment.kt b/src/org/lunaris/settings/fragments/themes/ColorPickerDialogFragment.kt
+deleted file mode 100644
+--- a/src/org/lunaris/settings/fragments/themes/ColorPickerDialogFragment.kt
++++ /dev/null
+@@ -1,88 +0,0 @@
+-/*
+- * Copyright (C) 2024-2025 Lunaris AOSP
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.lunaris.settings.fragments.themes
+-
+-import android.graphics.Color as AndroidColor
+-import android.os.Bundle
+-import android.view.LayoutInflater
+-import android.view.View
+-import android.view.ViewGroup
+-import androidx.compose.ui.graphics.Color
+-import androidx.compose.ui.platform.ComposeView
+-import androidx.compose.ui.platform.ViewCompositionStrategy
+-import androidx.fragment.app.DialogFragment
+-import org.lunaris.settings.utils.ColorPickerDialog
+-import org.lunaris.settings.utils.LunarisTheme
+-
+-class ColorPickerDialogFragment : DialogFragment() {
+-
+-    private var initialColor: Color = Color(0xFF6750A4)
+-    private var onColorSelected: ((Color) -> Unit)? = null
+-
+-    override fun onCreate(savedInstanceState: Bundle?) {
+-        super.onCreate(savedInstanceState)
+-        setStyle(STYLE_NORMAL, android.R.style.Theme_Material_Dialog_NoActionBar)
+-        
+-        arguments?.getString(ARG_COLOR_HEX)?.let { hex ->
+-            try {
+-                initialColor = Color(AndroidColor.parseColor("#$hex"))
+-            } catch (e: Exception) {
+-                e.printStackTrace()
+-            }
+-        }
+-    }
+-
+-    override fun onCreateView(
+-        inflater: LayoutInflater,
+-        container: ViewGroup?,
+-        savedInstanceState: Bundle?
+-    ): View {
+-        return ComposeView(requireContext()).apply {
+-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+-            
+-            setContent {
+-                LunarisTheme {
+-                    ColorPickerDialog(
+-                        initialColor = initialColor,
+-                        onDismiss = { dismiss() },
+-                        onColorSelected = { color ->
+-                            onColorSelected?.invoke(color)
+-                            dismiss()
+-                        }
+-                    )
+-                }
+-            }
+-        }
+-    }
+-
+-    fun setOnColorSelectedListener(listener: (Color) -> Unit) {
+-        onColorSelected = listener
+-    }
+-
+-    companion object {
+-        private const val ARG_COLOR_HEX = "color_hex"
+-        const val TAG = "ColorPickerDialogFragment"
+-
+-        fun newInstance(colorHex: String): ColorPickerDialogFragment {
+-            return ColorPickerDialogFragment().apply {
+-                arguments = Bundle().apply {
+-                    putString(ARG_COLOR_HEX, colorHex)
+-                }
+-            }
+-        }
+-    }
+-}
+diff --git a/src/org/lunaris/settings/fragments/themes/WallpaperColorPickerDialogFragment.kt b/src/org/lunaris/settings/fragments/themes/WallpaperColorPickerDialogFragment.kt
+deleted file mode 100644
+--- a/src/org/lunaris/settings/fragments/themes/WallpaperColorPickerDialogFragment.kt
++++ /dev/null
+@@ -1,72 +0,0 @@
+-/*
+- * Copyright (C) 2024-2025 Lunaris AOSP
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.lunaris.settings.fragments.themes
+-
+-import android.os.Bundle
+-import android.view.LayoutInflater
+-import android.view.View
+-import android.view.ViewGroup
+-import androidx.compose.ui.graphics.Color
+-import androidx.compose.ui.platform.ComposeView
+-import androidx.compose.ui.platform.ViewCompositionStrategy
+-import androidx.fragment.app.DialogFragment
+-import org.lunaris.settings.utils.WallpaperColorPickerDialog
+-import org.lunaris.settings.utils.LunarisTheme
+-
+-class WallpaperColorPickerDialogFragment : DialogFragment() {
+-
+-    private var onColorSelected: ((Color) -> Unit)? = null
+-
+-    override fun onCreate(savedInstanceState: Bundle?) {
+-        super.onCreate(savedInstanceState)
+-        setStyle(STYLE_NORMAL, android.R.style.Theme_Material_Dialog_NoActionBar)
+-    }
+-
+-    override fun onCreateView(
+-        inflater: LayoutInflater,
+-        container: ViewGroup?,
+-        savedInstanceState: Bundle?
+-    ): View {
+-        return ComposeView(requireContext()).apply {
+-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+-            
+-            setContent {
+-                LunarisTheme {
+-                    WallpaperColorPickerDialog(
+-                        onDismiss = { dismiss() },
+-                        onColorSelected = { color ->
+-                            onColorSelected?.invoke(color)
+-                            dismiss()
+-                        }
+-                    )
+-                }
+-            }
+-        }
+-    }
+-
+-    fun setOnColorSelectedListener(listener: (Color) -> Unit) {
+-        onColorSelected = listener
+-    }
+-
+-    companion object {
+-        const val TAG = "WallpaperColorPickerDialogFragment"
+-
+-        fun newInstance(): WallpaperColorPickerDialogFragment {
+-            return WallpaperColorPickerDialogFragment()
+-        }
+-    }
+-}
+diff --git a/src/org/lunaris/settings/utils/WallpaperColorPickerDialog.kt b/src/org/lunaris/settings/utils/WallpaperColorPickerDialog.kt
+deleted file mode 100644
+--- a/src/org/lunaris/settings/utils/WallpaperColorPickerDialog.kt
++++ /dev/null
+@@ -1,287 +0,0 @@
+-/*
+- * Copyright (C) 2024-2025 Lunaris AOSP
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *      http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-package org.lunaris.settings.utils
+-
+-import android.app.WallpaperManager
+-import android.graphics.Bitmap
+-import android.graphics.BitmapFactory
+-import android.graphics.drawable.BitmapDrawable
+-import android.net.Uri
+-import androidx.activity.compose.rememberLauncherForActivityResult
+-import androidx.activity.result.contract.ActivityResultContracts
+-import androidx.compose.foundation.background
+-import androidx.compose.foundation.layout.*
+-import androidx.compose.foundation.shape.RoundedCornerShape
+-import androidx.compose.material.icons.Icons
+-import androidx.compose.material.icons.filled.Image
+-import androidx.compose.material3.*
+-import androidx.compose.runtime.*
+-import androidx.compose.ui.Alignment
+-import androidx.compose.ui.Modifier
+-import androidx.compose.ui.graphics.Color
+-import androidx.compose.ui.graphics.asImageBitmap
+-import androidx.compose.ui.platform.LocalContext
+-import androidx.compose.ui.unit.dp
+-import androidx.compose.ui.window.Dialog
+-import com.github.skydoves.colorpicker.compose.*
+-import kotlinx.coroutines.Dispatchers
+-import kotlinx.coroutines.launch
+-import kotlinx.coroutines.withContext
+-
+-@Composable
+-fun WallpaperColorPickerDialog(
+-    onDismiss: () -> Unit,
+-    onColorSelected: (Color) -> Unit
+-) {
+-    val context = LocalContext.current
+-    val controller = rememberColorPickerController()
+-    val coroutineScope = rememberCoroutineScope()
+-    
+-    var wallpaperBitmap by remember { mutableStateOf<Bitmap?>(null) }
+-    var isLoading by remember { mutableStateOf(true) }
+-    var selectedColor by remember { mutableStateOf(Color.Transparent) }
+-    var hexInput by remember { mutableStateOf("") }
+-    var useCustomImage by remember { mutableStateOf(false) }
+-
+-    val imagePickerLauncher = rememberLauncherForActivityResult(
+-        contract = ActivityResultContracts.GetContent()
+-    ) { uri: Uri? ->
+-        uri?.let {
+-            coroutineScope.launch {
+-                try {
+-                    val bitmap = withContext(Dispatchers.IO) {
+-                        context.contentResolver.openInputStream(uri)?.use { stream ->
+-                            val originalBitmap = BitmapFactory.decodeStream(stream)
+-                            val maxSize = 800
+-                            val scale = minOf(
+-                                maxSize.toFloat() / originalBitmap.width,
+-                                maxSize.toFloat() / originalBitmap.height,
+-                                1f
+-                            )
+-                            if (scale < 1f) {
+-                                Bitmap.createScaledBitmap(
+-                                    originalBitmap,
+-                                    (originalBitmap.width * scale).toInt(),
+-                                    (originalBitmap.height * scale).toInt(),
+-                                    true
+-                                )
+-                            } else {
+-                                originalBitmap
+-                            }
+-                        }
+-                    }
+-                    wallpaperBitmap = bitmap
+-                    useCustomImage = true
+-                    isLoading = false
+-                    
+-                    bitmap?.let { bmp ->
+-                        controller.setPaletteImageBitmap(bmp.asImageBitmap())
+-                    }
+-                } catch (e: Exception) {
+-                    e.printStackTrace()
+-                    isLoading = false
+-                }
+-            }
+-        }
+-    }
+-
+-    LaunchedEffect(Unit) {
+-        if (!useCustomImage) {
+-            coroutineScope.launch {
+-                try {
+-                    val bitmap = withContext(Dispatchers.IO) {
+-                        val wallpaperManager = WallpaperManager.getInstance(context)
+-                        val drawable = wallpaperManager.drawable
+-                        if (drawable is BitmapDrawable) {
+-                            val originalBitmap = drawable.bitmap
+-                            val maxSize = 800
+-                            val scale = minOf(
+-                                maxSize.toFloat() / originalBitmap.width,
+-                                maxSize.toFloat() / originalBitmap.height,
+-                                1f
+-                            )
+-                            if (scale < 1f) {
+-                                Bitmap.createScaledBitmap(
+-                                    originalBitmap,
+-                                    (originalBitmap.width * scale).toInt(),
+-                                    (originalBitmap.height * scale).toInt(),
+-                                    true
+-                                )
+-                            } else {
+-                                originalBitmap
+-                            }
+-                        } else {
+-                            null
+-                        }
+-                    }
+-                    wallpaperBitmap = bitmap
+-                    isLoading = false
+-                    
+-                    bitmap?.let {
+-                        controller.setPaletteImageBitmap(it.asImageBitmap())
+-                    }
+-                } catch (e: Exception) {
+-                    e.printStackTrace()
+-                    isLoading = false
+-                }
+-            }
+-        }
+-    }
+-
+-    Dialog(onDismissRequest = onDismiss) {
+-        Surface(
+-            shape = RoundedCornerShape(28.dp),
+-            color = MaterialTheme.colorScheme.surface,
+-            tonalElevation = 6.dp
+-        ) {
+-            Column(
+-                modifier = Modifier
+-                    .padding(24.dp)
+-                    .width(340.dp)
+-            ) {
+-                Text(
+-                    text = if (useCustomImage) "Pick Color from Image" else "Pick Color from Wallpaper",
+-                    style = MaterialTheme.typography.headlineSmall,
+-                    modifier = Modifier.padding(bottom = 8.dp)
+-                )
+-                OutlinedButton(
+-                    onClick = { imagePickerLauncher.launch("image/*") },
+-                    modifier = Modifier.fillMaxWidth()
+-                ) {
+-                    Icon(
+-                        imageVector = Icons.Default.Image,
+-                        contentDescription = null,
+-                        modifier = Modifier.size(20.dp)
+-                    )
+-                    Spacer(modifier = Modifier.width(8.dp))
+-                    Text("Import Image from Gallery")
+-                }
+-                Spacer(modifier = Modifier.height(16.dp))
+-                if (isLoading) {
+-                    Box(
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .height(300.dp),
+-                        contentAlignment = Alignment.Center
+-                    ) {
+-                        CircularProgressIndicator()
+-                    }
+-                } else if (wallpaperBitmap != null) {
+-                    Box(
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .height(60.dp)
+-                            .background(
+-                                color = selectedColor,
+-                                shape = RoundedCornerShape(12.dp)
+-                            )
+-                    )
+-
+-                    Spacer(modifier = Modifier.height(16.dp))
+-                    OutlinedTextField(
+-                        value = hexInput,
+-                        onValueChange = { },
+-                        label = { Text("Selected Color") },
+-                        prefix = { Text("#") },
+-                        readOnly = true,
+-                        singleLine = true,
+-                        modifier = Modifier.fillMaxWidth()
+-                    )
+-                    Spacer(modifier = Modifier.height(16.dp))
+-                    Box(
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .height(250.dp)
+-                            .background(
+-                                color = MaterialTheme.colorScheme.surfaceVariant,
+-                                shape = RoundedCornerShape(16.dp)
+-                            )
+-                    ) {
+-                        ImageColorPicker(
+-                            modifier = Modifier
+-                                .fillMaxSize()
+-                                .padding(8.dp),
+-                            controller = controller,
+-                            paletteImageBitmap = wallpaperBitmap!!.asImageBitmap(),
+-                            paletteContentScale = PaletteContentScale.FIT,
+-                            onColorChanged = { colorEnvelope ->
+-                                selectedColor = colorEnvelope.color
+-                                hexInput = colorEnvelope.hexCode.takeLast(6)
+-                            }
+-                        )
+-                    }
+-                    Spacer(modifier = Modifier.height(8.dp))
+-                    Text(
+-                        text = "Tap on the ${if (useCustomImage) "image" else "wallpaper"} to pick a color",
+-                        style = MaterialTheme.typography.bodySmall,
+-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+-                        modifier = Modifier.padding(start = 4.dp)
+-                    )
+-                } else {
+-                    Box(
+-                        modifier = Modifier
+-                            .fillMaxWidth()
+-                            .height(300.dp),
+-                        contentAlignment = Alignment.Center
+-                    ) {
+-                        Column(
+-                            horizontalAlignment = Alignment.CenterHorizontally,
+-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+-                        ) {
+-                            Text(
+-                                text = "Unable to load wallpaper",
+-                                style = MaterialTheme.typography.bodyLarge,
+-                                color = MaterialTheme.colorScheme.error
+-                            )
+-                            Button(onClick = { imagePickerLauncher.launch("image/*") }) {
+-                                Icon(
+-                                    imageVector = Icons.Default.Image,
+-                                    contentDescription = null,
+-                                    modifier = Modifier.size(20.dp)
+-                                )
+-                                Spacer(modifier = Modifier.width(8.dp))
+-                                Text("Import Image")
+-                            }
+-                        }
+-                    }
+-                }
+-
+-                Spacer(modifier = Modifier.height(24.dp))
+-
+-                Row(
+-                    modifier = Modifier.fillMaxWidth(),
+-                    horizontalArrangement = Arrangement.End
+-                ) {
+-                    TextButton(onClick = onDismiss) {
+-                        Text("Cancel")
+-                    }
+-                    Spacer(modifier = Modifier.width(8.dp))
+-                    Button(
+-                        onClick = {
+-                            if (selectedColor != Color.Transparent) {
+-                                onColorSelected(selectedColor)
+-                            }
+-                        },
+-                        enabled = !isLoading && selectedColor != Color.Transparent
+-                    ) {
+-                        Text("Apply")
+-                    }
+-                }
+-            }
+-        }
+-    }
+-}
+diff --git a/res/xml/monet_settings.xml b/res/xml/monet_settings.xml
+deleted file mode 100644
+--- a/res/xml/monet_settings.xml
++++ /dev/null
+@@ -1,210 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<!--
+-    Copyright (C) 2014-2025 Lunaris AOSP
+-
+-    Licensed under the Apache License, Version 2.0 (the "License");
+-    you may not use this file except in compliance with the License.
+-    You may obtain a copy of the License at
+-
+-        http://www.apache.org/licenses/LICENSE-2.0
+-
+-    Unless required by applicable law or agreed to in writing, software
+-    distributed under the License is distributed on an "AS IS" BASIS,
+-    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+-    See the License for the specific language governing permissions and
+-    limitations under the License.
+--->
+-
+-<PreferenceScreen 
+-    xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:settings="http://schemas.android.com/apk/res/com.android.settings"
+-    android:title="@string/monet_settings_title">
+-
+-    <com.android.settingslib.widget.LayoutPreference
+-        android:key="monet_preview"
+-        android:layout="@layout/monet_preview"
+-        android:selectable="false"/>
+-
+-    <PreferenceCategory
+-        android:title="@string/color_settings_category"
+-        android:key="color_settings_category">
+-
+-        <SwitchPreferenceCompat
+-            android:key="use_wallpaper_colors"
+-            android:title="@string/use_wallpaper_colors_title"
+-            android:summary="@string/use_wallpaper_colors_desc"
+-            android:defaultValue="true" />
+-
+-        <Preference
+-            android:key="custom_seed_color"
+-            android:title="@string/custom_seed_color_title"
+-            android:summary="#6750A4"
+-            android:persistent="false" />
+-
+-        <Preference
+-            android:key="wallpaper_seed_color"
+-            android:title="@string/wallpaper_seed_color_title"
+-            android:summary="@string/wallpaper_seed_color_desc"
+-            android:persistent="false" />
+-
+-        <ListPreference
+-            android:key="theme_style"
+-            android:title="@string/theme_style_title"
+-            android:summary="%s"
+-            android:entries="@array/monet_engine_style_entries"
+-            android:entryValues="@array/monet_engine_style_values"
+-            android:defaultValue="TONAL_SPOT" />
+-
+-    </PreferenceCategory>
+-
+-    <PreferenceCategory
+-       android:title="@string/secondary_seed_category"
+-       android:key="secondary_seed_category">
+-
+-       <SwitchPreferenceCompat
+-           android:key="use_secondary_seed"
+-           android:title="@string/use_secondary_seed_title"
+-           android:summary="@string/use_secondary_seed_desc"
+-           android:defaultValue="false" />
+-
+-       <Preference
+-           android:key="secondary_seed_color"
+-           android:title="@string/secondary_seed_color_title"
+-           android:summary="#FF5500"
+-           android:persistent="false" />
+-
+-    </PreferenceCategory>
+-
+-    <PreferenceCategory
+-        android:title="@string/advanced_settings_category"
+-        android:key="advanced_settings_category">
+-
+-        <SwitchPreferenceCompat
+-            android:key="fidelity_enabled"
+-            android:title="@string/fidelity_title"
+-            android:summary="@string/fidelity_desc"
+-            android:defaultValue="false" />
+-
+-        <org.lunaris.settings.preferences.CustomSeekBarPreference
+-            android:key="contrast_level"
+-            android:title="@string/contrast_level_title"
+-            android:max="100"
+-            settings:min="-100"
+-            settings:interval="1"
+-            settings:units="%"
+-            android:defaultValue="0"
+-            android:persistent="false" />
+-
+-        <org.lunaris.settings.preferences.CustomSeekBarPreference
+-            android:key="chroma_boost"
+-            android:title="@string/chroma_boost_title"
+-            android:max="100"
+-            settings:min="0"
+-            settings:interval="1"
+-            settings:units="%"
+-            android:defaultValue="0"
+-            android:persistent="false" />
+-        
+-        <org.lunaris.settings.preferences.CustomSeekBarPreference
+-            android:key="chroma_boost_accent1"
+-            android:title="@string/chroma_accent1_title"
+-            android:max="100"
+-            settings:min="0"
+-            settings:interval="1"
+-            settings:units="%"
+-            android:defaultValue="0"
+-            android:persistent="false" />
+-
+-        <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="chroma_boost_accent2"
+-           android:title="@string/chroma_accent2_title"
+-           android:max="100"
+-           settings:min="0"
+-           settings:interval="1"
+-           settings:units="%"
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="chroma_boost_accent3"
+-           android:title="@string/chroma_accent3_title"
+-           android:max="100"
+-           settings:min="0"
+-           settings:interval="1"
+-           settings:units="%"
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="chroma_boost_neutral1"
+-           android:title="@string/chroma_neutral1_title"
+-           android:max="100"
+-           settings:min="0"
+-           settings:interval="1"
+-           settings:units="%"
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="chroma_boost_neutral2"
+-           android:title="@string/chroma_neutral2_title"
+-           android:max="100"
+-           settings:min="0"
+-           settings:interval="1"
+-           settings:units="%"
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-   </PreferenceCategory>
+-
+-   <PreferenceCategory
+-       android:title="@string/hue_tone_settings_category"
+-       android:key="hue_tone_settings_category">
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="hue_shift"
+-           android:title="@string/hue_shift_title"
+-           android:summary="@string/hue_shift_desc"
+-           android:max="180"
+-           settings:min="-180"
+-           settings:interval="1"
+-           settings:units="°"
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="tone_shift_light"
+-           android:title="@string/tone_shift_light_title"
+-           android:summary="@string/tone_shift_light_desc"
+-           android:max="50"
+-           settings:min="-50"
+-           settings:interval="1"
+-           settings:units=""
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-       <org.lunaris.settings.preferences.CustomSeekBarPreference
+-           android:key="tone_shift_dark"
+-           android:title="@string/tone_shift_dark_title"
+-           android:summary="@string/tone_shift_dark_desc"
+-           android:max="50"
+-           settings:min="-50"
+-           settings:interval="1"
+-           settings:units=""
+-           android:defaultValue="0"
+-           android:persistent="false" />
+-
+-   </PreferenceCategory>
+-
+-    <com.android.settingslib.widget.UntitledPreferenceCategory
+-            android:key="monet_two_category">
+-            
+-        <Preference
+-            android:key="about_color_customization"
+-            android:title="@string/about_color_customization_title"
+-            android:summary="@string/about_color_customization_desc"
+-            android:selectable="false" />
+-
+-    </com.android.settingslib.widget.UntitledPreferenceCategory>
+-
+-</PreferenceScreen>
+diff --git a/res/layout/monet_preview.xml b/res/layout/monet_preview.xml
+deleted file mode 100644
+--- a/res/layout/monet_preview.xml
++++ /dev/null
+@@ -1,24 +0,0 @@
+-<?xml version="1.0" encoding="utf-8"?>
+-<androidx.constraintlayout.widget.ConstraintLayout 
+-    xmlns:android="http://schemas.android.com/apk/res/android"
+-    xmlns:app="http://schemas.android.com/apk/res-auto"
+-    xmlns:tools="http://schemas.android.com/tools"
+-    android:layout_width="match_parent"
+-    android:layout_height="wrap_content"
+-    android:paddingVertical="32dp"> 
+-
+-    <ImageView
+-        android:id="@+id/illustArtImageView"
+-        android:layout_width="0dp"
+-        android:layout_height="250dp"
+-        android:layout_centerInParent="true"
+-        android:src="@drawable/illust_art"
+-        app:layout_constraintHeight_max="250dp"
+-        app:layout_constraintWidth_default="percent"
+-        app:layout_constraintHeight_default="wrap"
+-        app:layout_constraintWidth_percent="1"
+-        android:scaleType="centerInside"
+-        android:layout_marginTop="16dp" 
+-        android:layout_marginBottom="16dp" /> 
+-
+-</androidx.constraintlayout.widget.ConstraintLayout>

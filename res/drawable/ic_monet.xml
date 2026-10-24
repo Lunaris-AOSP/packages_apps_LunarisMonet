@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2024-2026 Lunaris AOSP
+     SPDX-License-Identifier: Apache-2.0 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#E7D8FF" android:pathData="M26,54a28,28 0,0 1,56 0L26,54" />
+    <path android:fillColor="#F0BBDA" android:pathData="M26,54L54,54L54,82A28,28 0,0 1,26 54" />
+    <path android:fillColor="#AA88E0" android:pathData="M54,54L82,54A28,28 0,0 1,54 82Z" />
+</vector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Copyright (C) 2024-2026 Lunaris AOSP
+     SPDX-License-Identifier: Apache-2.0 -->
+<permissions>
+    <privapp-permissions package="org.lunaris.monet">
+        <permission name="android.permission.WRITE_SECURE_SETTINGS" />
+        <permission name="android.permission.READ_WALLPAPER_INTERNAL" />
+    </privapp-permissions>
+</permissions>

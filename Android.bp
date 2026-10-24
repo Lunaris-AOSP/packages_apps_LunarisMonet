@@ -1,0 +1,52 @@
+/*
+ * Copyright (C) 2024-2026 Lunaris AOSP
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+android_app {
+    name: "LunarisMonet",
+    manifest: "AndroidManifest.xml",
+    defaults: ["platform_app_defaults"],
+    srcs: ["src/**/*.kt"],
+    resource_dirs: ["res"],
+    certificate: "platform",
+    platform_apis: true,
+    privileged: true,
+    system_ext_specific: true,
+    required: ["privapp-permissions-lunarismonet"],
+    optimize: { enabled: true },
+    static_libs: [
+        "ax_compose",
+        "monet",
+        "androidx.activity_activity-compose",
+        "androidx.core_core-ktx",
+        "androidx.compose.animation_animation",
+        "androidx.compose.animation_animation-core",
+        "androidx.compose.foundation_foundation",
+        "androidx.compose.material3_material3",
+        "androidx.compose.material_material-icons-core",
+        "androidx.compose.material_material-icons-extended",
+        "androidx.compose.runtime_runtime",
+        "androidx.compose.ui_ui",
+        "androidx.lifecycle_lifecycle-viewmodel-compose",
+        "androidx.lifecycle_lifecycle-runtime-compose",
+        "kotlinx-coroutines-core",
+    ],
+    kotlincflags: [
+        "-Xjvm-default=all",
+        "-opt-in=kotlin.RequiresOptIn",
+        "-P plugin:androidx.compose.compiler.plugins.kotlin:sourceInformation=true",
+    ],
+}
+
+prebuilt_etc {
+    name: "privapp-permissions-lunarismonet",
+    system_ext_specific: true,
+    src: "privapp-permissions-lunarismonet.xml",
+    sub_dir: "permissions",
+    filename_from_src: true,
+}
