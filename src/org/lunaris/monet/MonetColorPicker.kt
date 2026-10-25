@@ -182,15 +182,22 @@ fun MonetColorPicker(
                                 verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
                                 image.colors.forEach { seed ->
-                                    val description = stringResource(R.string.sampled_color, hex(seed))
+                                    val description =
+                                        stringResource(R.string.sampled_color, hex(seed))
                                     FilledTonalIconToggleButton(
                                         shapes = IconButtonDefaults.toggleableShapes(),
                                         checked = color == seed,
                                         onCheckedChange = { selectColor(seed) },
-                                        modifier = Modifier.size(52.dp)
-                                            .semantics { contentDescription = description },
+                                        modifier =
+                                            Modifier.size(52.dp).semantics {
+                                                contentDescription = description
+                                            },
                                     ) {
-                                        Box(Modifier.size(34.dp).clip(CircleShape).background(Color(seed)))
+                                        Box(
+                                            Modifier.size(34.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(seed))
+                                        )
                                     }
                                 }
                             }
@@ -275,7 +282,7 @@ fun MonetColorPicker(
                         onClick = { parsed?.let(onApply) },
                         enabled = parsed != null,
                     ) {
-                        Text(stringResource(R.string.apply))
+                        Text(stringResource(R.string.use_color))
                     }
                 }
             }
@@ -297,10 +304,11 @@ private fun PickerImageCanvas(bitmap: Bitmap, onColor: (Int) -> Unit) {
             .pointerInput(bitmap, bounds) {
                 detectTapGestures { point ->
                     if (bounds.width == 0 || bounds.height == 0) return@detectTapGestures
-                    val scale = minOf(
-                        bounds.width.toFloat() / bitmap.width,
-                        bounds.height.toFloat() / bitmap.height,
-                    )
+                    val scale =
+                        minOf(
+                            bounds.width.toFloat() / bitmap.width,
+                            bounds.height.toFloat() / bitmap.height,
+                        )
                     val x = (point.x - (bounds.width - bitmap.width * scale) / 2) / scale
                     val y = (point.y - (bounds.height - bitmap.height * scale) / 2) / scale
                     if (x >= 0 && y >= 0 && x < bitmap.width && y < bitmap.height) {
@@ -309,7 +317,7 @@ private fun PickerImageCanvas(bitmap: Bitmap, onColor: (Int) -> Unit) {
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     }
                 }
-            },
+            }
     ) {
         Image(
             bitmap = bitmap.asImageBitmap(),
@@ -320,10 +328,11 @@ private fun PickerImageCanvas(bitmap: Bitmap, onColor: (Int) -> Unit) {
         Canvas(Modifier.fillMaxSize()) {
             selectedPoint?.let { point ->
                 val scale = minOf(size.width / bitmap.width, size.height / bitmap.height)
-                val center = Offset(
-                    (size.width - bitmap.width * scale) / 2 + point.x * bitmap.width * scale,
-                    (size.height - bitmap.height * scale) / 2 + point.y * bitmap.height * scale,
-                )
+                val center =
+                    Offset(
+                        (size.width - bitmap.width * scale) / 2 + point.x * bitmap.width * scale,
+                        (size.height - bitmap.height * scale) / 2 + point.y * bitmap.height * scale,
+                    )
                 drawCircle(Color.Black, 12.dp.toPx(), center, style = Stroke(5.dp.toPx()))
                 drawCircle(Color.White, 12.dp.toPx(), center, style = Stroke(2.dp.toPx()))
             }

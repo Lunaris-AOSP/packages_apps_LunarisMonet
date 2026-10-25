@@ -27,6 +27,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.RestartAlt
@@ -48,17 +49,19 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 @Composable
 fun Modifier.monetPress(interaction: MutableInteractionSource): Modifier {
     val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        if (pressed) 0.96f else 1f,
-        MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "press scale",
-    )
+    val scale by
+        animateFloatAsState(
+            if (pressed) 0.96f else 1f,
+            MaterialTheme.motionScheme.fastSpatialSpec(),
+            label = "press scale",
+        )
     return graphicsLayer {
         scaleX = scale
         scaleY = scale
@@ -75,11 +78,12 @@ fun MonetFilterChip(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val corner by animateDpAsState(
-        if (enabled && pressed) 8.dp else if (selected) 20.dp else 12.dp,
-        MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "chip corner",
-    )
+    val corner by
+        animateDpAsState(
+            if (enabled && pressed) 8.dp else if (selected) 20.dp else 12.dp,
+            MaterialTheme.motionScheme.fastSpatialSpec(),
+            label = "chip corner",
+        )
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -93,17 +97,18 @@ fun MonetFilterChip(
 
 @Composable
 private fun animatedPaletteColor(argb: Int): Color {
-    val color by animateColorAsState(
-        Color(argb),
-        MaterialTheme.motionScheme.defaultEffectsSpec(),
-        label = "preview color",
-    )
+    val color by
+        animateColorAsState(
+            Color(argb),
+            MaterialTheme.motionScheme.defaultEffectsSpec(),
+            label = "preview color",
+        )
     return color
 }
 
 @Composable
-fun MonetToolbar(advanced: Boolean, onSelect: (Boolean) -> Unit, modifier: Modifier = Modifier) {
-    val desiredWidth = 288.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.3f)
+fun MonetToolbar(tab: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val desiredWidth = 344.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.3f)
     val width = minOf(desiredWidth, (LocalConfiguration.current.screenWidthDp - 48).dp)
     HorizontalFloatingToolbar(
         expanded = true,
@@ -117,11 +122,11 @@ fun MonetToolbar(advanced: Boolean, onSelect: (Boolean) -> Unit, modifier: Modif
                 toolbarContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ),
     ) {
-        BoxWithConstraints(Modifier.width(width).height(52.dp)) {
-            val itemWidth = maxWidth / 2
+        BoxWithConstraints(Modifier.width(width).height(64.dp)) {
+            val itemWidth = maxWidth / 3
             val offset by
                 animateDpAsState(
-                    if (advanced) itemWidth else 0.dp,
+                    itemWidth * tab,
                     MaterialTheme.motionScheme.defaultSpatialSpec(),
                     label = "section indicator",
                 )
@@ -133,8 +138,10 @@ fun MonetToolbar(advanced: Boolean, onSelect: (Boolean) -> Unit, modifier: Modif
                     .background(MaterialTheme.colorScheme.surfaceContainerLowest)
             )
             Row(Modifier.fillMaxSize().selectableGroup()) {
-                listOf(false, true).forEach { isAdvanced ->
-                    val selected = advanced == isAdvanced
+                listOf(R.string.home, R.string.advanced, R.string.extras).forEachIndexed {
+                    index,
+                    titleRes ->
+                    val selected = tab == index
                     val interaction = remember { MutableInteractionSource() }
                     val haptic = LocalHapticFeedback.current
                     val color by
@@ -144,8 +151,8 @@ fun MonetToolbar(advanced: Boolean, onSelect: (Boolean) -> Unit, modifier: Modif
                             MaterialTheme.motionScheme.fastEffectsSpec(),
                             label = "section color",
                         )
-                    val title = stringResource(if (isAdvanced) R.string.advanced else R.string.home)
-                    Row(
+                    val title = stringResource(titleRes)
+                    Column(
                         Modifier.weight(1f)
                             .fillMaxHeight()
                             .monetPress(interaction)
@@ -158,24 +165,30 @@ fun MonetToolbar(advanced: Boolean, onSelect: (Boolean) -> Unit, modifier: Modif
                                 onClick = {
                                     if (!selected) {
                                         haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                        onSelect(isAdvanced)
+                                        onSelect(index)
                                     }
                                 },
                             ),
-                        horizontalArrangement =
-                            Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement =
+                            Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
                     ) {
                         Icon(
-                            if (isAdvanced) Icons.Default.Tune else Icons.Default.Home,
+                            when (index) {
+                                1 -> Icons.Default.Tune
+                                2 -> Icons.Default.AutoAwesome
+                                else -> Icons.Default.Home
+                            },
                             null,
                             Modifier.size(22.dp),
                             tint = color,
                         )
                         Text(
                             title,
-                            style = MaterialTheme.typography.labelLargeEmphasized,
+                            style = MaterialTheme.typography.labelMedium,
                             color = color,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
@@ -262,9 +275,10 @@ fun MonetSwitch(
             checked = checked,
             onCheckedChange = null,
             enabled = enabled,
-            thumbContent = if (checked) {
-                { Icon(Icons.Default.Check, null, Modifier.size(SwitchDefaults.IconSize)) }
-            } else null,
+            thumbContent =
+                if (checked) {
+                    { Icon(Icons.Default.Check, null, Modifier.size(SwitchDefaults.IconSize)) }
+                } else null,
         )
     }
 }
@@ -277,16 +291,19 @@ fun MonetSlider(
     enabled: Boolean = true,
     unit: Int = R.string.percent_value,
     summary: String? = null,
+    defaultValue: Int = 0,
+    onPreview: ((Int) -> Unit)? = null,
     onChange: (Int) -> Unit,
 ) {
     var pending by remember { mutableFloatStateOf(value.toFloat()) }
     var dragging by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
-    val badgeCorner by animateDpAsState(
-        if (dragging) 12.dp else 20.dp,
-        MaterialTheme.motionScheme.fastSpatialSpec(),
-        label = "slider value shape",
-    )
+    val badgeCorner by
+        animateDpAsState(
+            if (dragging) 12.dp else 20.dp,
+            MaterialTheme.motionScheme.fastSpatialSpec(),
+            label = "slider value shape",
+        )
     LaunchedEffect(value, enabled) { if (!dragging && enabled) pending = value.toFloat() }
     Column {
         Row(
@@ -309,11 +326,11 @@ fun MonetSlider(
             IconButton(
                 shapes = IconButtonDefaults.shapes(),
                 onClick = {
-                    pending = 0f
+                    pending = defaultValue.toFloat()
                     haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                    onChange(0)
+                    onChange(defaultValue)
                 },
-                enabled = enabled && value != 0,
+                enabled = enabled && value != defaultValue,
             ) {
                 Icon(
                     Icons.Default.RestartAlt,
@@ -333,6 +350,7 @@ fun MonetSlider(
             onValueChange = {
                 dragging = true
                 pending = it
+                onPreview?.invoke(it.roundToInt())
             },
             onValueChangeFinished = {
                 dragging = false
@@ -359,10 +377,12 @@ fun PaletteDisc(preview: PalettePreview, modifier: Modifier = Modifier, selected
         }
         AnimatedVisibility(
             selected,
-            enter = fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
-                scaleIn(MaterialTheme.motionScheme.fastSpatialSpec(), initialScale = 0.6f),
-            exit = fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
-                scaleOut(MaterialTheme.motionScheme.fastSpatialSpec(), targetScale = 0.6f),
+            enter =
+                fadeIn(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                    scaleIn(MaterialTheme.motionScheme.fastSpatialSpec(), initialScale = 0.6f),
+            exit =
+                fadeOut(MaterialTheme.motionScheme.fastEffectsSpec()) +
+                    scaleOut(MaterialTheme.motionScheme.fastSpatialSpec(), targetScale = 0.6f),
         ) {
             Surface(shape = CircleShape, color = Color(preview.secondaryContainer)) {
                 Icon(

@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,7 +63,8 @@ import java.util.Locale
 @Composable
 fun MonetScreen(viewModel: MonetViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var advanced by rememberSaveable { mutableStateOf(false) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var leavePreview by remember { mutableStateOf(false) }
     var reset by rememberSaveable { mutableStateOf(false) }
     var save by rememberSaveable { mutableStateOf(false) }
     var picker by rememberSaveable { mutableStateOf<String?>(null) }
@@ -72,7 +74,10 @@ fun MonetScreen(viewModel: MonetViewModel) {
     val motion = MaterialTheme.motionScheme
     val homeList = rememberLazyListState()
     val advancedList = rememberLazyListState()
-    BackHandler(advanced) { advanced = false }
+    val extrasList = rememberLazyListState()
+    val tabState = rememberSaveableStateHolder()
+    BackHandler(tab != 0) { tab = 0 }
+    BackHandler(tab == 0 && state.hasChanges && picker == null) { leavePreview = true }
     LaunchedEffect(message) {
         if (message != null) {
             snackbar.showSnackbar(message)
@@ -88,10 +93,26 @@ fun MonetScreen(viewModel: MonetViewModel) {
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
-        snackbarHost = { SnackbarHost(snackbar, Modifier.padding(bottom = 96.dp)) },
+        snackbarHost = { SnackbarHost(snackbar) },
+        bottomBar = {
+            if (!WindowInsets.isImeVisible) {
+                Column(
+                    Modifier.fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    AnimatedVisibility(state.hasChanges) {
+                        MonetPreviewActions(!state.busy, viewModel::apply, viewModel::discard)
+                    }
+                    MonetToolbar(tab, onSelect = { tab = it })
+                }
+            }
+        },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
-            Column(Modifier.fillMaxSize()) {
+            Column(Modifier.widthIn(max = 840.dp).fillMaxSize().align(Alignment.TopCenter)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -149,9 +170,9 @@ fun MonetScreen(viewModel: MonetViewModel) {
                     }
                 } else {
                     AnimatedContent(
-                        targetState = advanced,
+                        targetState = tab,
                         transitionSpec = {
-                            val direction = if (targetState) 1 else -1
+                            val direction = if (targetState > initialState) 1 else -1
                             (fadeIn(motion.defaultEffectsSpec()) +
                                 slideInHorizontally(motion.defaultSpatialSpec()) {
                                     direction * it / 8
@@ -162,43 +183,62 @@ fun MonetScreen(viewModel: MonetViewModel) {
                                     })
                         },
                         label = "Monet section",
-                    ) { showAdvanced ->
-                        if (showAdvanced)
-                            MonetAdvanced(
-                                snapshot,
-                                !state.busy,
-                                viewModel,
-                                listState = advancedList,
-                                onColor = { picker = "secondary" },
-                            )
-                        else
-                            MonetHome(
-                                snapshot,
-                                !state.busy,
-                                viewModel,
-                                listState = homeList,
-                                onColor = { picker = "primary" },
-                                onSave = { save = true },
-                            )
+                    ) { selectedTab ->
+                        tabState.SaveableStateProvider(selectedTab) {
+                            if (selectedTab == 2)
+                                MonetExtras(
+                                    snapshot,
+                                    !state.busy,
+                                    state.hasChanges,
+                                    viewModel,
+                                    extrasList,
+                                    onColor = { picker = "tertiary" },
+                                    onSave = { save = true },
+                                )
+                            else if (selectedTab == 1)
+                                MonetAdvanced(
+                                    snapshot,
+                                    !state.busy,
+                                    viewModel,
+                                    listState = advancedList,
+                                    onColor = { picker = "secondary" },
+                                )
+                            else
+                                MonetHome(
+                                    snapshot,
+                                    !state.busy,
+                                    viewModel,
+                                    listState = homeList,
+                                    onColor = { picker = "primary" },
+                                    onSave = { save = true },
+                                )
+                        }
                     }
                 }
             }
-            AnimatedVisibility(
-                visible = !WindowInsets.isImeVisible,
-                modifier =
-                    Modifier.align(Alignment.BottomCenter)
-                        .padding(start = 18.dp, end = 18.dp, bottom = 16.dp),
-                enter =
-                    fadeIn(motion.defaultEffectsSpec()) +
-                        slideInVertically(motion.defaultSpatialSpec()) { it / 2 },
-                exit =
-                    fadeOut(motion.fastEffectsSpec()) +
-                        slideOutVertically(motion.fastSpatialSpec()) { it / 2 },
-            ) {
-                MonetToolbar(advanced, onSelect = { advanced = it })
-            }
         }
     }
+    if (leavePreview)
+        AlertDialog(
+            onDismissRequest = { leavePreview = false },
+            title = { Text(stringResource(R.string.discard_title)) },
+            text = { Text(stringResource(R.string.discard_summary)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        leavePreview = false
+                        viewModel.discard()
+                    }
+                ) {
+                    Text(stringResource(R.string.discard))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { leavePreview = false }) {
+                    Text(stringResource(R.string.keep_editing))
+                }
+            },
+        )
     if (reset)
         AlertDialog(
             onDismissRequest = { reset = false },
@@ -229,13 +269,16 @@ fun MonetScreen(viewModel: MonetViewModel) {
         if (snapshot != null)
             MonetColorPicker(
                 initialColor =
-                    if (target == "secondary") snapshot.settings.secondarySeed ?: 0xffff5500.toInt()
+                    if (target == "tertiary") snapshot.settings.tertiarySeed ?: 0xff6750a4.toInt()
+                    else if (target == "secondary")
+                        snapshot.settings.secondarySeed ?: 0xffff5500.toInt()
                     else snapshot.seed,
                 viewModel = viewModel,
                 onDismiss = { picker = null },
                 onApply = { color ->
                     picker = null
-                    viewModel.seed(color, target == "secondary")
+                    if (target == "tertiary") viewModel.tertiarySeed(color)
+                    else viewModel.seed(color, target == "secondary")
                 },
             )
     }
@@ -275,7 +318,7 @@ private fun MonetHome(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item("intro") { MonetIntro(false) }
@@ -318,17 +361,19 @@ private fun MonetHome(
                             val interaction = remember { MutableInteractionSource() }
                             val pressed by interaction.collectIsPressedAsState()
                             val haptic = LocalHapticFeedback.current
-                            val corner by animateDpAsState(
-                                if (pressed) 18.dp else if (selected) 32.dp else 24.dp,
-                                MaterialTheme.motionScheme.fastSpatialSpec(),
-                                label = "palette corner",
-                            )
-                            val container by animateColorAsState(
-                                if (selected) MaterialTheme.colorScheme.secondaryContainer
-                                else MaterialTheme.colorScheme.surfaceContainerHigh,
-                                MaterialTheme.motionScheme.defaultEffectsSpec(),
-                                label = "palette container",
-                            )
+                            val corner by
+                                animateDpAsState(
+                                    if (pressed) 18.dp else if (selected) 32.dp else 24.dp,
+                                    MaterialTheme.motionScheme.fastSpatialSpec(),
+                                    label = "palette corner",
+                                )
+                            val container by
+                                animateColorAsState(
+                                    if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                    else MaterialTheme.colorScheme.surfaceContainerHigh,
+                                    MaterialTheme.motionScheme.defaultEffectsSpec(),
+                                    label = "palette container",
+                                )
                             Surface(
                                 modifier = Modifier.monetPress(interaction),
                                 shape = RoundedCornerShape(corner),
@@ -344,7 +389,9 @@ private fun MonetHome(
                                             enabled = enabled,
                                             role = Role.RadioButton,
                                             onClick = {
-                                                haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                                haptic.performHapticFeedback(
+                                                    HapticFeedbackType.SegmentTick
+                                                )
                                                 viewModel.palette(palette)
                                             },
                                         )
@@ -444,6 +491,7 @@ private fun MonetHome(
                     0..100,
                     enabled,
                     summary = stringResource(R.string.global_chroma_summary),
+                    onPreview = { viewModel.previewValue(MonetSettings.CHROMA, it) },
                 ) {
                     viewModel.setValue(MonetSettings.CHROMA, it)
                 }
@@ -510,7 +558,7 @@ private fun MonetAdvanced(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 116.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item("intro") { MonetIntro(true) }
@@ -570,6 +618,7 @@ private fun MonetAdvanced(
                                 settings.paletteChroma(index).toInt(),
                                 0..100,
                                 enabled,
+                                onPreview = { viewModel.previewValue(key, it) },
                             ) {
                                 viewModel.setValue(key, it)
                             }
@@ -589,6 +638,7 @@ private fun MonetAdvanced(
                     enabled,
                     unit = R.string.degree_value,
                     summary = stringResource(R.string.hue_rotation_summary),
+                    onPreview = { viewModel.previewValue(MonetSettings.HUE, it) },
                 ) {
                     viewModel.setValue(MonetSettings.HUE, it)
                 }
@@ -603,6 +653,7 @@ private fun MonetAdvanced(
                     -50..50,
                     enabled,
                     unit = R.string.tone_value,
+                    onPreview = { viewModel.previewValue(MonetSettings.TONE_LIGHT, it) },
                 ) {
                     viewModel.setValue(MonetSettings.TONE_LIGHT, it)
                 }
@@ -612,6 +663,7 @@ private fun MonetAdvanced(
                     -50..50,
                     enabled,
                     unit = R.string.tone_value,
+                    onPreview = { viewModel.previewValue(MonetSettings.TONE_DARK, it) },
                 ) {
                     viewModel.setValue(MonetSettings.TONE_DARK, it)
                 }
@@ -636,6 +688,7 @@ private fun MonetAdvanced(
                         ((settings.contrast ?: snapshot.systemContrast) * 100).toInt(),
                         -100..100,
                         enabled,
+                        onPreview = { viewModel.previewValue(MonetSettings.CONTRAST, it / 100.0) },
                     ) {
                         viewModel.setValue(MonetSettings.CONTRAST, it / 100.0)
                     }
@@ -647,7 +700,7 @@ private fun MonetAdvanced(
 }
 
 @Composable
-private fun ColorRow(title: String, color: Int, enabled: Boolean, onClick: () -> Unit) {
+internal fun ColorRow(title: String, color: Int, enabled: Boolean, onClick: () -> Unit) {
     OutlinedButton(
         shapes = ButtonDefaults.shapes(shape = RoundedCornerShape(20.dp)),
         onClick = onClick,
