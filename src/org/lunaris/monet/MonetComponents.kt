@@ -27,11 +27,11 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -40,8 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -49,16 +49,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 @Composable
-fun Modifier.monetPress(interaction: MutableInteractionSource): Modifier {
+fun Modifier.monetPress(interaction: MutableInteractionSource, scaleDown: Float = 0.96f): Modifier {
     val pressed by interaction.collectIsPressedAsState()
     val scale by
         animateFloatAsState(
-            if (pressed) 0.96f else 1f,
+            if (pressed) scaleDown else 1f,
             MaterialTheme.motionScheme.fastSpatialSpec(),
             label = "press scale",
         )
@@ -108,8 +108,10 @@ private fun animatedPaletteColor(argb: Int): Color {
 
 @Composable
 fun MonetToolbar(tab: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifier) {
-    val desiredWidth = 344.dp * LocalDensity.current.fontScale.coerceIn(1f, 1.3f)
-    val width = minOf(desiredWidth, (LocalConfiguration.current.screenWidthDp - 48).dp)
+    val haptic = LocalHapticFeedback.current
+    val titles = listOf(R.string.home, R.string.advanced, R.string.extras)
+    val fontScale = LocalDensity.current.fontScale
+    val width = 360.dp * fontScale.coerceIn(1f, 1.3f)
     HorizontalFloatingToolbar(
         expanded = true,
         modifier = modifier,
@@ -122,78 +124,101 @@ fun MonetToolbar(tab: Int, onSelect: (Int) -> Unit, modifier: Modifier = Modifie
                 toolbarContentColor = MaterialTheme.colorScheme.onSecondaryContainer,
             ),
     ) {
-        BoxWithConstraints(Modifier.width(width).height(64.dp)) {
-            val itemWidth = maxWidth / 3
+        BoxWithConstraints(Modifier.widthIn(max = width).width(width)) {
+            val itemWidth = maxWidth / titles.size
+            val compact = maxWidth / fontScale < 320.dp
             val offset by
                 animateDpAsState(
                     itemWidth * tab,
-                    MaterialTheme.motionScheme.defaultSpatialSpec(),
+                    MaterialTheme.motionScheme.fastSpatialSpec(),
                     label = "section indicator",
                 )
-            Box(
-                Modifier.offset(x = offset)
-                    .width(itemWidth)
-                    .fillMaxHeight()
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-            )
-            Row(Modifier.fillMaxSize().selectableGroup()) {
-                listOf(R.string.home, R.string.advanced, R.string.extras).forEachIndexed {
-                    index,
-                    titleRes ->
-                    val selected = tab == index
-                    val interaction = remember { MutableInteractionSource() }
-                    val haptic = LocalHapticFeedback.current
-                    val color by
-                        animateColorAsState(
-                            if (selected) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSecondaryContainer,
-                            MaterialTheme.motionScheme.fastEffectsSpec(),
-                            label = "section color",
-                        )
-                    val title = stringResource(titleRes)
-                    Column(
-                        Modifier.weight(1f)
+            Box {
+                Box(Modifier.matchParentSize()) {
+                    Box(
+                        Modifier.offset(x = offset)
+                            .width(itemWidth)
                             .fillMaxHeight()
-                            .monetPress(interaction)
                             .clip(CircleShape)
-                            .selectable(
-                                selected,
-                                interactionSource = interaction,
-                                indication = ripple(),
-                                role = Role.Tab,
-                                onClick = {
-                                    if (!selected) {
-                                        haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                        onSelect(index)
-                                    }
-                                },
-                            ),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement =
-                            Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
-                    ) {
-                        Icon(
-                            when (index) {
-                                1 -> Icons.Default.Tune
-                                2 -> Icons.Default.AutoAwesome
-                                else -> Icons.Default.Home
+                            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    )
+                }
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).selectableGroup()) {
+                    titles.forEachIndexed { index, titleRes ->
+                        MonetToolbarItem(
+                            icon = when (index) {
+                                1 -> Icons.Rounded.Tune
+                                2 -> Icons.Rounded.AutoAwesome
+                                else -> Icons.Rounded.Home
                             },
-                            null,
-                            Modifier.size(22.dp),
-                            tint = color,
-                        )
-                        Text(
-                            title,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = color,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            label = stringResource(titleRes),
+                            selected = tab == index,
+                            compact = compact,
+                            onClick = {
+                                if (tab != index) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                    onSelect(index)
+                                }
+                            },
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
                         )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun MonetToolbarItem(
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    compact: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val color by
+        animateColorAsState(
+            if (selected) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSecondaryContainer,
+            MaterialTheme.motionScheme.fastEffectsSpec(),
+            label = "section color",
+        )
+    val itemModifier = modifier
+        .heightIn(min = 48.dp)
+        .monetPress(interaction, scaleDown = 0.95f)
+        .clip(CircleShape)
+        .selectable(
+            selected = selected,
+            interactionSource = interaction,
+            indication = ripple(),
+            role = Role.Tab,
+            onClick = onClick,
+        )
+        .padding(horizontal = 8.dp, vertical = 10.dp)
+    val content: @Composable () -> Unit = {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(22.dp), tint = color)
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLargeEmphasized,
+            color = color,
+            textAlign = TextAlign.Center,
+        )
+    }
+    if (compact) {
+        Column(
+            modifier = itemModifier,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        ) { content() }
+    } else {
+        Row(
+            modifier = itemModifier,
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically,
+        ) { content() }
     }
 }
 

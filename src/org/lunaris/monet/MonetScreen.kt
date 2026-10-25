@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -52,6 +53,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -76,6 +78,7 @@ fun MonetScreen(viewModel: MonetViewModel) {
     val advancedList = rememberLazyListState()
     val extrasList = rememberLazyListState()
     val tabState = rememberSaveableStateHolder()
+    val layoutDirection = LocalLayoutDirection.current
     BackHandler(tab != 0) { tab = 0 }
     BackHandler(tab == 0 && state.hasChanges && picker == null) { leavePreview = true }
     LaunchedEffect(message) {
@@ -98,8 +101,11 @@ fun MonetScreen(viewModel: MonetViewModel) {
             if (!WindowInsets.isImeVisible) {
                 Column(
                     Modifier.fillMaxWidth()
-                        .navigationBarsPadding()
-                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                        .windowInsetsPadding(
+                            WindowInsets.navigationBars.union(WindowInsets.displayCutout)
+                                .only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal)
+                        )
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
@@ -111,7 +117,14 @@ fun MonetScreen(viewModel: MonetViewModel) {
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+        // Keep the lists behind the floating toolbar; reserve its height at their scroll ends.
+        val contentPadding = PaddingValues(
+            start = padding.calculateStartPadding(layoutDirection),
+            top = padding.calculateTopPadding(),
+            end = padding.calculateEndPadding(layoutDirection),
+        )
+        val bottomPadding = padding.calculateBottomPadding() + 24.dp
+        Box(Modifier.fillMaxSize().padding(contentPadding).consumeWindowInsets(padding)) {
             Column(Modifier.widthIn(max = 840.dp).fillMaxSize().align(Alignment.TopCenter)) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
@@ -192,6 +205,7 @@ fun MonetScreen(viewModel: MonetViewModel) {
                                     state.hasChanges,
                                     viewModel,
                                     extrasList,
+                                    bottomPadding = bottomPadding,
                                     onColor = { picker = "tertiary" },
                                     onSave = { save = true },
                                 )
@@ -201,6 +215,7 @@ fun MonetScreen(viewModel: MonetViewModel) {
                                     !state.busy,
                                     viewModel,
                                     listState = advancedList,
+                                    bottomPadding = bottomPadding,
                                     onColor = { picker = "secondary" },
                                 )
                             else
@@ -209,6 +224,7 @@ fun MonetScreen(viewModel: MonetViewModel) {
                                     !state.busy,
                                     viewModel,
                                     listState = homeList,
+                                    bottomPadding = bottomPadding,
                                     onColor = { picker = "primary" },
                                     onSave = { save = true },
                                 )
@@ -310,6 +326,7 @@ private fun MonetHome(
     enabled: Boolean,
     viewModel: MonetViewModel,
     listState: LazyListState,
+    bottomPadding: Dp,
     onColor: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -318,7 +335,7 @@ private fun MonetHome(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item("intro") { MonetIntro(false) }
@@ -551,6 +568,7 @@ private fun MonetAdvanced(
     enabled: Boolean,
     viewModel: MonetViewModel,
     listState: LazyListState,
+    bottomPadding: Dp,
     onColor: () -> Unit,
 ) {
     val settings = snapshot.settings
@@ -558,7 +576,7 @@ private fun MonetAdvanced(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item("intro") { MonetIntro(true) }

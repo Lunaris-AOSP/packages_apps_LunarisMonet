@@ -34,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -84,6 +85,7 @@ fun MonetExtras(
     hasChanges: Boolean,
     viewModel: MonetViewModel,
     listState: LazyListState,
+    bottomPadding: Dp,
     onColor: () -> Unit,
     onSave: () -> Unit,
 ) {
@@ -118,7 +120,7 @@ fun MonetExtras(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = bottomPadding),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         item("intro") {
