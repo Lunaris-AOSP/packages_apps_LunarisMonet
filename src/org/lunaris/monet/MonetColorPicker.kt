@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -42,13 +44,16 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 
@@ -60,34 +65,40 @@ fun MonetColorPicker(
     onApply: (Int) -> Unit,
 ) {
     var hex by rememberSaveable { mutableStateOf(hex(initialColor)) }
+    var color by rememberSaveable { mutableIntStateOf(initialColor or 0xff000000.toInt()) }
     var imageMode by rememberSaveable { mutableStateOf(false) }
     var imageUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var rgbMode by rememberSaveable { mutableStateOf(false) }
     val image by viewModel.image.collectAsStateWithLifecycle()
     val scroll = rememberScrollState()
     val keyboard = LocalSoftwareKeyboardController.current
     var importFailed by remember { mutableStateOf(false) }
-    val parsed =
-        hex.takeIf { it.matches(Regex("[0-9A-Fa-f]{6}")) }
-            ?.toLongOrNull(16)
-            ?.toInt()
-            ?.or(0xff000000.toInt())
-    val color = parsed ?: initialColor
-    var hsv by rememberSaveable {
-        mutableStateOf(FloatArray(3).also { AndroidColor.colorToHSV(initialColor, it) })
+    val parsed = parsePickerHex(hex)
+    val originalHsv = remember(initialColor) {
+        FloatArray(3).also { AndroidColor.colorToHSV(initialColor, it) }
     }
+    var hsv by rememberSaveable { mutableStateOf(originalHsv.copyOf()) }
     fun selectColor(value: Int) {
-        hex = hex(value)
-        hsv = FloatArray(3).also { AndroidColor.colorToHSV(value, it) }
+        color = value or 0xff000000.toInt()
+        hex = hex(color)
+        hsv =
+            FloatArray(3).also {
+                AndroidColor.colorToHSV(color, it)
+                if (it[1] == 0f) it[0] = hsv[0]
+                if (it[2] == 0f) it[1] = hsv[1]
+            }
     }
-    fun changeHsv(index: Int, value: Float) {
-        hsv = hsv.copyOf().also { it[index] = value }
-        hex = hex(AndroidColor.HSVToColor(hsv))
+    fun changeHsv(value: FloatArray) {
+        hsv = value
+        color = AndroidColor.HSVToColor(value)
+        hex = hex(color)
     }
     val importImage =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) {
                 if (imageMode && imageUri == uri.toString()) viewModel.loadImage(uri)
                 imageUri = uri.toString()
+                hex = hex(color)
                 imageMode = true
             }
         }
@@ -108,13 +119,20 @@ fun MonetColorPicker(
         } else viewModel.clearImage()
     }
     DisposableEffect(viewModel) { onDispose { viewModel.clearImage() } }
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
         Surface(
-            shape = RoundedCornerShape(28.dp),
+            modifier =
+                Modifier.padding(horizontal = 16.dp, vertical = 24.dp)
+                    .widthIn(max = 520.dp)
+                    .fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh,
         ) {
             Column(
-                Modifier.fillMaxWidth().heightIn(max = 680.dp).padding(24.dp),
+                Modifier.fillMaxWidth().heightIn(max = 760.dp).padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
@@ -123,23 +141,14 @@ fun MonetColorPicker(
                         else if (imageUri == null) R.string.pick_wallpaper
                         else R.string.image_palette
                     ),
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = MaterialTheme.typography.headlineSmallEmphasized,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Column(
                     Modifier.weight(1f, fill = false).verticalScroll(scroll),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Box(
-                        Modifier.fillMaxWidth()
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(color))
-                    )
-                    Text(
-                        stringResource(R.string.sampled_color, hex(color)),
-                        Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    PickerColorPreview(initialColor, color)
                     if (imageMode) {
                         if (image.loading || (image.bitmap == null && !image.failed)) {
                             Box(
@@ -217,10 +226,57 @@ fun MonetColorPicker(
                             Text(stringResource(R.string.pick_image))
                         }
                     } else {
+                        AdvancedColorPicker(hsv, ::changeHsv)
+                        OutlinedTextField(
+                            value = hex,
+                            onValueChange = {
+                                hex = it.trim().removePrefix("#").uppercase(Locale.ROOT)
+                                parsePickerHex(hex)?.let(::selectColor)
+                            },
+                            label = { Text(stringResource(R.string.hex_color)) },
+                            prefix = { Text("#") },
+                            singleLine = true,
+                            isError = parsed == null,
+                            supportingText = {
+                                if (parsed == null) Text(stringResource(R.string.hex_invalid))
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            keyboardOptions =
+                                KeyboardOptions(
+                                    capitalization = KeyboardCapitalization.Characters,
+                                    autoCorrectEnabled = false,
+                                    keyboardType = KeyboardType.Ascii,
+                                    imeAction = ImeAction.Done,
+                                ),
+                            keyboardActions = KeyboardActions(onDone = { keyboard?.hide() }),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        PickerChannelControls(
+                            hsv = hsv,
+                            color = color,
+                            rgbMode = rgbMode,
+                            onModeChange = { rgbMode = it },
+                            onHsvChange = ::changeHsv,
+                            onColorChange = ::selectColor,
+                        )
+                        TextButton(
+                            onClick = {
+                                selectColor(initialColor)
+                                hsv = originalHsv.copyOf()
+                            },
+                            enabled =
+                                color != (initialColor or 0xff000000.toInt()) ||
+                                    !hsv.contentEquals(originalHsv) || parsed == null,
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text(stringResource(R.string.reset_picker_color))
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         FilledTonalButton(
                             shapes = ButtonDefaults.shapes(),
                             onClick = {
                                 imageUri = null
+                                hex = hex(color)
                                 imageMode = true
                             },
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
@@ -234,38 +290,6 @@ fun MonetColorPicker(
                         ) {
                             Text(stringResource(R.string.pick_image))
                         }
-                        OutlinedTextField(
-                            value = hex,
-                            onValueChange = {
-                                hex = it.removePrefix("#").take(6).uppercase(Locale.ROOT)
-                                if (hex.matches(Regex("[0-9A-F]{6}"))) {
-                                    hsv =
-                                        FloatArray(3).also { channels ->
-                                            AndroidColor.colorToHSV(
-                                                hex.toLong(16).toInt() or 0xff000000.toInt(),
-                                                channels,
-                                            )
-                                        }
-                                }
-                            },
-                            label = { Text(stringResource(R.string.hex_color)) },
-                            prefix = { Text("#") },
-                            singleLine = true,
-                            isError = parsed == null,
-                            supportingText = {
-                                if (parsed == null) Text(stringResource(R.string.hex_invalid))
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        PickerSlider(stringResource(R.string.hue), hsv[0], 0f..360f) {
-                            changeHsv(0, it)
-                        }
-                        PickerSlider(stringResource(R.string.saturation), hsv[1] * 100, 0f..100f) {
-                            changeHsv(1, it / 100)
-                        }
-                        PickerSlider(stringResource(R.string.brightness), hsv[2] * 100, 0f..100f) {
-                            changeHsv(2, it / 100)
-                        }
                     }
                     if (importFailed) {
                         Text(
@@ -274,9 +298,12 @@ fun MonetColorPicker(
                         )
                     }
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                FlowRow(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-                    Spacer(Modifier.width(8.dp))
                     Button(
                         shapes = ButtonDefaults.shapes(),
                         onClick = { parsed?.let(onApply) },
@@ -340,22 +367,9 @@ private fun PickerImageCanvas(bitmap: Bitmap, onColor: (Int) -> Unit) {
     }
 }
 
-@Composable
-private fun PickerSlider(
-    title: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onChange: (Float) -> Unit,
-) {
-    Column {
-        Text(title, style = MaterialTheme.typography.labelLarge)
-        Slider(
-            value = value,
-            onValueChange = onChange,
-            valueRange = range,
-            modifier = Modifier.semantics { contentDescription = title },
-        )
-    }
-}
+internal fun parsePickerHex(value: String): Int? =
+    value.takeIf { it.length == 6 && it.all { digit -> digit in "0123456789abcdefABCDEF" } }
+        ?.toIntOrNull(16)
+        ?.or(0xff000000.toInt())
 
 private fun hex(color: Int): String = String.format(Locale.ROOT, "%06X", color and 0xffffff)
